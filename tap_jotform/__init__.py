@@ -11,6 +11,8 @@ from singer.catalog import Catalog, CatalogEntry
 from singer.schema import Schema
 import singer.metrics as metrics
 
+from .metadata_utils import write_metadata, populate_metadata, get_selected_streams
+
 REQUIRED_CONFIG_KEYS = ["api_key", "start_date", "is_hipaa_safe_mode_on"]
 PER_PAGE = 100
 
@@ -22,7 +24,7 @@ KEY_PROPERTIES = {
 }
 
 # need to move inside sync
-HEADERS = {'APIKEY': config['api_key']}
+
 URL = "https://hipaa-api.jotform.com/"
 
 # need to be converted to clients
@@ -55,21 +57,20 @@ def get_bookmark(state, form_id, stream_name, bookmark_key):
   pass
 
 
-def authed_get(source, url, headers=None, query_params=None):
-  headers = headers if headers else {}
+def authed_get(source, url, query_params=None):
   query_params = query_params if query_params else {}
   with metrics.http_request_timer(source) as timer:
-    SESSION.headers.update(headers)
+
     resp = SESSION.get(url=url, params=query_params)
     resp.raise_for_status()
 
     timer.tags[metrics.Tag.http_status_code] = resp.status_code
     return resp
 
-def authed_get_all_pages(source, url, headers, query_params):
+def authed_get_all_pages(source, url, query_params):
   offset, limit = 0, 20
   while True:
-    resp = authed_get(source, url, headers, query_params)
+    resp = authed_get(source, url, query_params)
     resp.raise_for_status()
     yield resp
     query_params['offset'] = query_params['offset'] + limit
@@ -93,7 +94,26 @@ def load_schemas():
 
     return schemas
 
+def get_catalog():
+    raw_schemas = load_schemas()
+    streams = []
 
+    for schema_name, schema in raw_schemas.items():
+
+        # get metadata for each field
+        mdata = populate_metadata(schema_name, schema, KEY_PROPERTIES)
+
+        # create and add catalog entry
+        catalog_entry = {
+            'stream': schema_name,
+            'tap_stream_id': schema_name,
+            'schema': schema,
+            'metadata' : metadata.to_list(mdata),
+            'key_properties': KEY_PROPERTIES[schema_name],
+        }
+        streams.append(catalog_entry)
+
+    return {'streams': streams}
 
 def get_all_submissions(schema, form_id, state, mdata):
   '''
@@ -109,7 +129,6 @@ def get_all_submissions(schema, form_id, state, mdata):
       'submissions',
       f'https://hipaa-api.jotform.com/form/{form_id}/submissions',
       query_params=query_params,
-      headers=HEADERS
     ):
       submissions = response.json()
       extraction_time = singer.utils.now()
@@ -118,95 +137,40 @@ def get_all_submissions(schema, form_id, state, mdata):
         with singer.Transformer() as transformer:
                     record = transformer.transform(submission, schema, metadata=metadata.to_map(mdata))
         singer.write_record('submissions', record, time_extracted=extraction_time )
-        singer.write_bookmark(state, form_id, 'submissions', {'id': submissions['id']}
+        singer.write_bookmark(state, form_id, 'submissions', {'id': submissions['id']})
         counter.increment()
+
   return state
 
-def discover():
-    raw_schemas = load_schemas()
-    streams = []
-    for stream_id, schema in raw_schemas.items():
-        # TODO: populate any metadata and stream's key properties here..
-        stream_metadata = []
-        key_properties = []
-        streams.append(
-            CatalogEntry(
-                tap_stream_id=stream_id,
-                stream=stream_id,
-                schema=schema,
-                key_properties=key_properties,
-                metadata=stream_metadata,
-                replication_key=None,
-                is_view=None,
-                database=None,
-                table=None,
-                row_count=None,
-                stream_alias=None,
-                replication_method=None,
-            )
-        )
-    return Catalog(streams)
+def do_sync(config, state, catalog):
+  headers = {'APIKEY': config['api_key']}
+  SESSION.headers.update(headers)
+
+  # get selected streams, make sure stream dependencies are met
+  selected_stream_ids = get_selected_streams(catalog)
+  print(selected_stream_ids)
+  import ipdb; ipdb.set_trace()
+
+  state = translate_state(state, catalog)
+  singer.write_state(state)
+
+  # get all the users
+  # get all the forms from api
+
+  # get all the submissions for all the forms
+  # get all the questions for all the forms
 
 
-def sync(config, state, catalog):
-    """ Sync data from tap source """
-    # Loop over selected streams in catalog
-    import pdb; pdb.set_trace()
-    # TODO: figure out how to make selected work
-    for stream in catalog.streams:
-        LOGGER.info("Syncing stream:" + stream.tap_stream_id)
 
-        bookmark_column = stream.replication_key
-        is_sorted = True  # TODO: indicate whether data is sorted ascending on bookmark value
-
-        singer.write_schema(
-            stream_name=stream.tap_stream_id,
-            schema=stream.schema.to_dict(),
-            key_properties=stream.key_properties,
-        )
-
-        url = f"https://hipaa-api.jotform.com/form/{config['form_id']}/submissions"
-        headers = {'APIKEY': config['api_key']}
-        res = requests.get(url, headers=headers)
-
-        # TODO: delete and replace this inline function with your own data retrieval process:
-        tap_data = lambda: [{"id": x, "name": "row${x}"} for x in range(1000)]
-
-
-        max_bookmark = None
-        for row in res.json()["content"]:
-            # TODO: place type conversions or transformations here
-            import pdb; pdb.set_trace()
-            # write one or more rows to the stream:
-            singer.write_records(stream.tap_stream_id, [row])
-            if bookmark_column:
-                if is_sorted:
-                    # update bookmark to latest value
-                    singer.write_state({stream.tap_stream_id: row[bookmark_column]})
-                else:
-                    # if data unsorted, save max value until end of writes
-                    max_bookmark = max(max_bookmark, row[bookmark_column])
-        if bookmark_column and not is_sorted:
-            singer.write_state({stream.tap_stream_id: max_bookmark})
-    return
-
-
-@utils.handle_top_exception(LOGGER)
+@singer.utils.handle_top_exception(LOGGER)
 def main():
-    # Parse command line arguments
-    args = utils.parse_args(REQUIRED_CONFIG_KEYS)
+    args = singer.utils.parse_args(REQUIRED_CONFIG_KEYS)
 
-    # If discover flag was passed, run discovery mode and dump output to stdout
     if args.discover:
-        catalog = discover()
-        catalog.dump()
-    # Otherwise run in sync mode
+        do_discover()
     else:
-        if args.catalog:
-            catalog = args.catalog
-        else:
-            catalog = discover()
-        sync(args.config, args.state, catalog)
+        catalog = args.properties if args.properties else get_catalog()
+        do_sync(args.config, args.state, catalog)
 
 
 if __name__ == "__main__":
