@@ -1,0 +1,53 @@
+{
+  "type": [
+    "object"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "qid": {
+      "type": [
+        "integer"
+      ]
+    },
+    "text": {
+      "type": [
+        "string"
+      ]
+    },
+    "type": {
+      "type": [
+        "string"
+      ]
+    },
+    "print": {
+      "type": [
+        "string"
+      ]
+    },
+    "order": {
+      "type": [
+        "integer"
+      ]
+    },
+    "name": {
+      "type": [
+        "string"
+      ]
+    },
+    "clear": {
+      "type": [
+        "string"
+      ]
+    },
+    "buttonStyle": {
+      "type": [
+        "string"
+      ]
+    },
+    "buttonAlign": {
+      "type": [
+        "string"
+      ]
+    }
+  }
+}
