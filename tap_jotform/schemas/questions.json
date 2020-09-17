@@ -9,17 +9,80 @@
         "integer"
       ]
     },
+    "hint": {
+      "type": [
+        "string"
+      ]
+    },
     "text": {
       "type": [
         "string"
       ]
     },
+
+    "readonly": {
+      "type": [
+        "string"
+      ]
+    },
+    "validation": {
+      "type": [
+        "string"
+      ]
+    },
+    "cols": {
+      "type": [
+        "string"
+      ]
+    },
+
+    "rows": {
+      "type": [
+        "string"
+      ]
+    },
+
+    "entryLimit": {
+      "type": [
+        "string"
+      ]
+    },
+
+    "required": {
+      "type": [
+        "string"
+      ]
+    },
+
+    "shrink": {
+      "type": [
+        "string"
+      ]
+    },
+    "size": {
+      "type": [
+        "integer"
+      ]
+    },
+
+    "labelAlign": {
+      "type": [
+        "string"
+      ]
+    },
+
     "type": {
       "type": [
         "string"
       ]
     },
     "print": {
+      "type": [
+        "string"
+      ]
+    },
+
+    "prefix": {
       "type": [
         "string"
       ]
@@ -42,6 +105,17 @@
     "buttonStyle": {
       "type": [
         "string"
+      ]
+    },
+    "sublabels": {
+      "type": [
+        "object"
+      ]
+    },
+
+    "suffix": {
+      "type": [
+        "object"
       ]
     },
     "buttonAlign": {
